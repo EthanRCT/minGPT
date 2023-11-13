@@ -136,18 +136,21 @@ class Trainer:
             if self.loss <= prev_loss and self.itr_since_last_save >= config.checkpoint_iters:
                 self.itr_since_last_save = 0
                 
-                # Save checkpoint
+                # Save current info in a checkpoint
                 checkpoint = {
-                    'model_transformer': model.transformer.state_dict(),
-                    'model_lm_head': model.lm_head.state_dict(),
-                    'optimizer_state_dict': self.optimizer.state_dict(),
-                    'loss': self.loss,
                     'iter_num': self.iter_num,
                     'iter_list': self.iter_list.append(self.iter_num),
                     'checkpoint_num': self.checkpoint_num,
-                    'saved_loss': self.saved_loss.append(self.loss)
+                    'loss': self.loss,
+                    'saved_loss': self.saved_loss.append(self.loss),
+                    'model_transformer': model.transformer.state_dict(),
+                    'model_lm_head': model.lm_head.state_dict(),
+                    'optimizer_state_dict': self.optimizer.state_dict(),
                 }
+
                 torch.save(checkpoint, f'checkpoints/{checkpoint_name}_{self.checkpoint_num}.pth')
+                
+                # Update checkpoint number
                 self.checkpoint_num += 1
                 
             if config.max_iters is not None and self.iter_num >= config.max_iters:
