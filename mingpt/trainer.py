@@ -8,7 +8,9 @@ from collections import defaultdict
 
 import torch
 from torch.utils.data.dataloader import DataLoader
-from mingpt.utils import CfgNode as CN
+from mingpt.utils import get_attr, CfgNode as CN
+import numpy as np
+
 
 class Trainer:
 
@@ -75,22 +77,44 @@ class Trainer:
         )
 
         model.train()
-        self.iter_num = 0
+
+        # Get attributes from config if they exist.
+        checkpoint_name = get_attr(config, 'checkpoint_name', str)
+
+        # Get attributes from model if they exist.
+        self.iter_num = get_attr(model, 'iter_num', int)
+        self.iter_list = get_attr(model, 'iter_list', list)
+        self.checkpoint_num = get_attr(model, 'checkpoint_num', int)
+        self.saved_loss = get_attr(model, 'saved_loss', list)
+
+        # Set attributes of current state of model.
+        self.itr_since_last_save = 0
         self.iter_time = time.time()
         data_iter = iter(train_loader)
-        while True:
 
-            # fetch the next batch (x, y) and re-init iterator if needed
+        # Set loss
+        self.loss = self.saved_loss[-1] if self.saved_loss else np.inf 
+
+        while True:
             try:
                 batch = next(data_iter)
             except StopIteration:
                 data_iter = iter(train_loader)
                 batch = next(data_iter)
+
             batch = [t.to(self.device) for t in batch]
             x, y = batch
 
+            # Get rid of the extra dimension.
+            x = x.squeeze(0)
+            y = y.squeeze(0)
+
+            # Get loss state
+            prev_loss = self.loss
+
             # forward the model
             logits, self.loss = model(x, y)
+            self.curr_loss.append(self.loss.detach())
 
             # backprop and update the parameters
             model.zero_grad(set_to_none=True)
@@ -103,7 +127,28 @@ class Trainer:
             tnow = time.time()
             self.iter_dt = tnow - self.iter_time
             self.iter_time = tnow
+            
+            # Update iterations since last save.
+            self.itr_since_last_save += 1
 
-            # termination conditions
+            # Save checkpoint if loss is lower than previous loss and we 
+            # have reached the checkpoint interval.
+            if self.loss <= prev_loss and self.itr_since_last_save >= config.checkpoint_iters:
+                self.itr_since_last_save = 0
+                
+                # Save checkpoint
+                checkpoint = {
+                    'model_transformer': model.transformer.state_dict(),
+                    'model_lm_head': model.lm_head.state_dict(),
+                    'optimizer_state_dict': self.optimizer.state_dict(),
+                    'loss': self.loss,
+                    'iter_num': self.iter_num,
+                    'iter_list': self.iter_list.append(self.iter_num),
+                    'checkpoint_num': self.checkpoint_num,
+                    'saved_loss': self.saved_loss.append(self.loss)
+                }
+                torch.save(checkpoint, f'checkpoints/{checkpoint_name}_{self.checkpoint_num}.pth')
+                self.checkpoint_num += 1
+                
             if config.max_iters is not None and self.iter_num >= config.max_iters:
                 break

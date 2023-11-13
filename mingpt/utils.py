@@ -10,6 +10,13 @@ import torch
 
 # -----------------------------------------------------------------------------
 
+def get_attr(obj, attr, default):
+    """ get an attribute from an object, with a default """
+    if hasattr(obj, attr):
+        return getattr(obj, attr)
+    else:
+        return default()
+
 def set_seed(seed):
     random.seed(seed)
     np.random.seed(seed)
