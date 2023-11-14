@@ -6,6 +6,7 @@ so nothing in this file really has anything to do with GPT specifically.
 import time
 from collections import defaultdict
 
+import os
 import torch
 import numpy as np
 from torch.utils.data.dataloader import DataLoader
@@ -139,6 +140,9 @@ class Trainer:
             if self.loss <= prev_loss and self.itr_since_last_save >= config.checkpoint_iters:
                 self.itr_since_last_save = 0
                 
+                if not os.path.exists(os.path.join(os.getcwd(), 'checkpoints')):
+                    os.mkdir(os.path.join(os.getcwd(), 'checkpoints'))
+
                 # Save current info as checkpoint.
                 torch.save({
                         'iter_num': self.iter_num,
@@ -150,7 +154,7 @@ class Trainer:
                         'model_lm_head': model.lm_head.state_dict(),
                         'optimizer_state_dict': self.optimizer.state_dict(),
                     },
-                    f'checkpoints/{checkpoint_name}-{self.checkpoint_num}.pth'
+                    os.path.join(os.getcwd(), 'checkpoints', f'{checkpoint_name}-{self.checkpoint_num}.pth')
                 )
                 
                 # Update checkpoint number

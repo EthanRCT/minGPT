@@ -4,5 +4,6 @@ __pycache__/
 .env
 .pylintrc
 
-# Don't push checkpoints
+# Don't push checkpoints and data
 checkpoints/*.pth
+data
