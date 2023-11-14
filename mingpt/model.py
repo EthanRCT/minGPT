@@ -150,13 +150,25 @@ class GPT(nn.Module):
         ))
         self.lm_head = nn.Linear(config.n_embd, config.vocab_size, bias=False)
 
-        # init all weights, and apply a special scaled init to the residual projections, per GPT-2 paper
-        self.apply(self._init_weights)
-        for pn, p in self.named_parameters():
-            if pn.endswith('c_proj.weight'):
-                torch.nn.init.normal_(p, mean=0.0, std=0.02/math.sqrt(2 * config.n_layer))
+        # Load our checkpoint if applicable
+        if config.checkpoint is not None:
+            # Load in variables from checkpoint
+            self.iter_num = self.checkpoint['iter_num']
+            self.checkpoint_num = self.checkpoint['checkpoint_num']
+            self.saved_loss = self.checkpoint['saved_loss']
+            self.checkpoint = torch.load(config.checkpoint)
+            self.transformer.load_state_dict(self.checkpoint['model_transformer'])
+            self.lm_head.load_state_dict(self.checkpoint['model_lm_head'])
+        else:
+            # Initialize variables 
+            self.checkpoint = None
+            self.apply(self._init_weights)
 
-        # report number of parameters (note we don't count the decoder parameters in lm_head)
+            # embed positions
+            for pn, p in self.named_parameters():
+                if pn.endswith('c_proj.weight'):
+                    torch.nn.init.normal_(p, mean=0.0, std=0.02/math.sqrt(2 * config.n_layer))
+
         n_params = sum(p.numel() for p in self.transformer.parameters())
         print("number of parameters: %.2fM" % (n_params/1e6,))
 
@@ -255,6 +267,10 @@ class GPT(nn.Module):
             {"params": [param_dict[pn] for pn in sorted(list(no_decay))], "weight_decay": 0.0},
         ]
         optimizer = torch.optim.AdamW(optim_groups, lr=train_config.learning_rate, betas=train_config.betas)
+
+        # if we have a saved checkpoint, get the optimizer state and load it into the optimizer
+        if self.checkpoint:
+            optimizer.load_state_dict(self.checkpoint['optimizer_state_dict'])
         return optimizer
 
     def forward(self, idx, targets=None):
@@ -270,12 +286,12 @@ class GPT(nn.Module):
         for block in self.transformer.h:
             x = block(x)
         x = self.transformer.ln_f(x)
+        
+        # forward the final linear layer and store the logits
         logits = self.lm_head(x)
 
-        # if we are given some desired targets also calculate the loss
-        loss = None
-        if targets is not None:
-            loss = F.cross_entropy(logits.view(-1, logits.size(-1)), targets.view(-1), ignore_index=-1)
+        # Compute loss if targets are provided.
+        loss = F.cross_entropy(logits.view(-1, logits.size(-1)), targets.view(-1), ignore_index=-1) if targets is not None else None
 
         return logits, loss
 

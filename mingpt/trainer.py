@@ -7,9 +7,9 @@ import time
 from collections import defaultdict
 
 import torch
+import numpy as np
 from torch.utils.data.dataloader import DataLoader
 from mingpt.utils import get_attr, CfgNode as CN
-import numpy as np
 
 
 class Trainer:
@@ -94,6 +94,7 @@ class Trainer:
 
         # Set loss
         self.loss = self.saved_loss[-1] if self.saved_loss else np.inf 
+        self.curr_loss = []
 
         while True:
             try:
@@ -114,6 +115,8 @@ class Trainer:
 
             # forward the model
             logits, self.loss = model(x, y)
+
+            # Add current loss to list of losses.
             self.curr_loss.append(self.loss.detach())
 
             # backprop and update the parameters
@@ -136,19 +139,19 @@ class Trainer:
             if self.loss <= prev_loss and self.itr_since_last_save >= config.checkpoint_iters:
                 self.itr_since_last_save = 0
                 
-                # Save current info in a checkpoint
-                checkpoint = {
-                    'iter_num': self.iter_num,
-                    'iter_list': self.iter_list.append(self.iter_num),
-                    'checkpoint_num': self.checkpoint_num,
-                    'loss': self.loss,
-                    'saved_loss': self.saved_loss.append(self.loss),
-                    'model_transformer': model.transformer.state_dict(),
-                    'model_lm_head': model.lm_head.state_dict(),
-                    'optimizer_state_dict': self.optimizer.state_dict(),
-                }
-
-                torch.save(checkpoint, f'checkpoints/{checkpoint_name}_{self.checkpoint_num}.pth')
+                # Save current info as checkpoint.
+                torch.save({
+                        'iter_num': self.iter_num,
+                        'iter_list': self.iter_list.append(self.iter_num),
+                        'checkpoint_num': self.checkpoint_num,
+                        'loss': self.loss,
+                        'saved_loss': self.saved_loss.append(self.loss),
+                        'model_transformer': model.transformer.state_dict(),
+                        'model_lm_head': model.lm_head.state_dict(),
+                        'optimizer_state_dict': self.optimizer.state_dict(),
+                    },
+                    f'checkpoints/{checkpoint_name}-{self.checkpoint_num}.pth'
+                )
                 
                 # Update checkpoint number
                 self.checkpoint_num += 1
